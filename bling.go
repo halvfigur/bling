@@ -9,6 +9,7 @@ import (
 	"os"
 	"regexp"
 	"sort"
+	"strings"
 )
 
 type color string
@@ -28,7 +29,7 @@ const (
 )
 
 type (
-	colorMap map[color]string
+	colorMap map[color][]byte
 	exprsMap map[color][]*regexp.Regexp
 
 	segment struct {
@@ -40,17 +41,17 @@ type (
 
 var (
 	colors = colorMap{
-		"black":   "\033[30m",
-		"red":     "\033[31m",
-		"green":   "\033[32m",
-		"yellow":  "\033[33m",
-		"blue":    "\033[34m",
-		"magenta": "\033[35m",
-		"cyan":    "\033[36m",
-		"white":   "\033[37m",
+		"black":   []byte("\033[30m"),
+		"red":     []byte("\033[31m"),
+		"green":   []byte("\033[32m"),
+		"yellow":  []byte("\033[33m"),
+		"blue":    []byte("\033[34m"),
+		"magenta": []byte("\033[35m"),
+		"cyan":    []byte("\033[36m"),
+		"white":   []byte("\033[37m"),
 
-		"reset":   "\033[0m",
-		"overlap": "\033[37;1;4m",
+		"reset":   []byte("\033[0m"),
+		"overlap": []byte("\033[37;1;4m"),
 	}
 
 	reset = "\033[m"
@@ -66,14 +67,6 @@ func (s *segment) contains(x int) bool {
 
 func (s *segment) String() string {
 	return fmt.Sprintf("(%d, %d, %s)", s.begin, s.end, s.c)
-}
-
-func colorize(c color, s string) string {
-	if colors[c] == "" {
-		panic("Color not found")
-	}
-
-	return fmt.Sprintf("%s%s%s", colors[c], s, reset)
 }
 
 func partition(segments []*segment) []*segment {
@@ -107,7 +100,7 @@ func findMatchingSegments(line []byte, exprs exprsMap) []*segment {
 func makeColorizedSegments(line []byte, matches []*segment) []*segment {
 	segments := make([]*segment, 0, len(matches))
 
-	segment := newSegment(0, -1, RESET)
+	segment := newSegment(0, 0, RESET)
 	for i := 0; i < len(line); i++ {
 
 		c := RESET
@@ -129,7 +122,7 @@ func makeColorizedSegments(line []byte, matches []*segment) []*segment {
 			segment.end++
 		} else {
 			segments = append(segments, segment)
-			segment = newSegment(i, i, c)
+			segment = newSegment(i, i+1, c)
 		}
 	}
 
@@ -137,10 +130,15 @@ func makeColorizedSegments(line []byte, matches []*segment) []*segment {
 }
 
 func printColorized(line []byte, segments []*segment) {
+	b := new(strings.Builder)
+
 	for _, s := range segments {
-		fmt.Printf("%s%s%s", colors[s.c], string(line[s.begin:s.end+1]), colors[RESET])
+		b.Write(colors[s.c])
+		b.Write(line[s.begin:s.end])
+		b.Write(colors[RESET])
 	}
-	fmt.Println()
+
+	fmt.Println(b.String())
 }
 
 func run(r io.Reader, exprs exprsMap) error {
@@ -193,7 +191,7 @@ func parseArgs(args []string) (exprsMap, io.ReadCloser, error) {
 		log.Print("Parts: ", parts)
 
 		col, pattern := color(parts[1]), parts[2]
-		if colors[col] == "" {
+		if colors[col] == nil {
 			return nil, nil, errors.New(fmt.Sprint("Unrecognized color ", col))
 		}
 
@@ -219,7 +217,7 @@ func parseArgs(args []string) (exprsMap, io.ReadCloser, error) {
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatalf("Usage: %s <-<COLOOR>=<PATTERN> |-<COLOR>=<PATTERN> ...] [FILE]", os.Args[0])
+		log.Fatalf("Usage: %s -COLOR=PATTERN [-COLOR=PATTERN...] [FILE]", os.Args[0])
 	}
 
 	exprs, file, err := parseArgs(os.Args[1:])
